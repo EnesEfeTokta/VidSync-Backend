@@ -11,6 +11,11 @@
 .env
 *.local
 
+# App settings
+src/Core/VidSync.API/appsettings.Development.json
+src/Core/VidSync.API/appsettings.Production.json
+src/Core/VidSync.API/appsettings.json
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
