@@ -1,26 +1,24 @@
-version: '3.8'
-
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: vidsync_db
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - vidsync_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7
     container_name: vidsync_redis
     ports:
       - "6379:6379"
     restart: unless-stopped
 
 volumes:
-  db_data:
+  vidsync_data:
     driver: local
