@@ -39,6 +39,9 @@ public class AuthController : ControllerBase
         {
             UserName = username,
             Email = registerDto.Email,
+            FirstName = registerDto.FirstName ?? "N/A",
+            MiddleName = registerDto.MiddleName ?? "N/A",
+            LastName = registerDto.LastName ?? "N/A",
             SecurityStamp = Guid.NewGuid().ToString(),
             CreatedAt = DateTime.UtcNow
         };
