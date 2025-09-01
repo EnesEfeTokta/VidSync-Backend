@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:15
+    container_name: vidsync_db
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - vidsync_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: vidsync_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  vidsync_data:
+    driver: local
