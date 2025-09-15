@@ -4,7 +4,6 @@ using VidSync.Persistence;
 using VidSync.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using VidSync.API.DTOs;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
 namespace VidSync.API.Controllers
 {
