@@ -13,7 +13,7 @@ public class CommunicationHub : Hub
     {
         var userId = Context.UserIdentifier;
 
-        _connections.Add(userId, Context.ConnectionId);
+        _connections.Add(userId ?? string.Empty, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
         await Clients.OthersInGroup(roomId).SendAsync("UserJoined", userId);
     }
@@ -25,7 +25,7 @@ public class CommunicationHub : Hub
             if (_connections.TryGetRoom(Context.ConnectionId, out var roomId))
             {
                 _connections.Remove(Context.ConnectionId);
-                await Clients.OthersInGroup(roomId).SendAsync("UserLeft", userId);
+                await Clients.OthersInGroup(roomId ?? string.Empty).SendAsync("UserLeft", userId);
             }
             
             await base.OnDisconnectedAsync(exception);
