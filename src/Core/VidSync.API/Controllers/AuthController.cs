@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Authorization;
 
 namespace VidSync.API.Controllers;
 
@@ -41,7 +42,18 @@ public class AuthController : ControllerBase
 
         var token = GenerateJwtToken(user);
 
-        return Ok(new { Message = "Login successful!" , Token = token, ExpiresIn = 30 * 60 });
+        return Ok(new
+        {
+            Token = token,
+            User = new
+            {
+                user.Id,
+                user.FirstName,
+                user.LastName,
+                user.Email,
+                user.UserName
+            }
+        });
     }
 
     [HttpPost("register")]
@@ -85,7 +97,58 @@ public class AuthController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        return Ok(new { Message = "User created successfully!" });
+        var token = GenerateJwtToken(user);
+
+        return Ok(new
+        {
+            Token = token,
+            User = new
+            {
+                user.Id,
+                user.FirstName,
+                user.LastName,
+                user.Email,
+                user.UserName
+            }
+        });
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<IActionResult> GetCurrentUser()
+    {
+        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userIdString))
+        {
+            ModelState.AddModelError("Token", "Token is missing the NameIdentifier claim.");
+            return Unauthorized(ModelState);
+        }
+
+        if (!Guid.TryParse(userIdString, out Guid userIdGuid))
+        {
+            ModelState.AddModelError("Token", "Invalid user identifier format in token.");
+            return BadRequest(ModelState);
+        }
+
+        var user = await _userManager.FindByIdAsync(userIdString);
+        if (user == null)
+        {
+            ModelState.AddModelError("Token", "User not found.");
+            return NotFound(ModelState);
+        }
+
+        var userDto = new
+        {
+            user.Id,
+            user.UserName,
+            user.Email,
+            user.FirstName,
+            user.MiddleName,
+            user.LastName,
+            user.CreatedAt
+        };
+
+        return Ok(userDto);
     }
 
     private string GenerateUsername(string firstName, string? middleName, string? lastName)
