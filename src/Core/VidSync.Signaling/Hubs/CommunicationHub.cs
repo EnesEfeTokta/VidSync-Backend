@@ -23,53 +23,50 @@ namespace VidSync.Signaling.Hubs
         {
             var userId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId)) return;
+            
+            var currentUser = await _userManager.FindByIdAsync(userId);
+            if (currentUser == null) return;
 
             var connectionId = Context?.ConnectionId;
+
+            var otherUserIdsInRoom = ConnectionToUserMap
+                .Where(kvp => kvp.Key != connectionId && ConnectionToRoomMap.ContainsKey(kvp.Key) && ConnectionToRoomMap[kvp.Key] == roomId)
+                .Select(kvp => kvp.Value).Distinct().ToList();
+
+            var existingParticipants = new List<object>();
+            foreach (var otherUserId in otherUserIdsInRoom)
+            {
+                var user = await _userManager.FindByIdAsync(otherUserId);
+                if (user != null)
+                {
+                    existingParticipants.Add(new { Id = user.Id.ToString(), FirstName = user.FirstName });
+                }
+            }
             
+            await Clients.Caller.SendAsync("ExistingParticipants", existingParticipants);
+
+            await Groups.AddToGroupAsync(connectionId ?? string.Empty, roomId);
             ConnectionToRoomMap[connectionId ?? string.Empty] = roomId;
             ConnectionToUserMap[connectionId ?? string.Empty] = userId;
-            await Groups.AddToGroupAsync(connectionId ?? string.Empty, roomId);
 
-            Console.WriteLine($"User {userId} joined room {roomId}");
-
-            await UpdateAndBroadcastParticipantList(roomId);
+            await Clients.OthersInGroup(roomId).SendAsync("UserJoined", new 
+            {
+                Id = currentUser.Id.ToString(),
+                FirstName = currentUser.FirstName
+            });
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
             var connectionId = Context.ConnectionId;
-
             if (ConnectionToRoomMap.TryRemove(connectionId, out var roomId))
             {
-                ConnectionToUserMap.TryRemove(connectionId, out _);
-
-                Console.WriteLine($"A connection disconnected from room {roomId}");
-
-                await UpdateAndBroadcastParticipantList(roomId);
-            }
-
-            await base.OnDisconnectedAsync(exception);
-        }
-
-        private async Task UpdateAndBroadcastParticipantList(string roomId)
-        {
-            var userIdsInRoom = ConnectionToUserMap
-                .Where(kvp => ConnectionToRoomMap.ContainsKey(kvp.Key) && ConnectionToRoomMap[kvp.Key] == roomId)
-                .Select(kvp => kvp.Value)
-                .Distinct()
-                .ToList();
-
-            var participants = new List<object>();
-            foreach (var userId in userIdsInRoom)
-            {
-                var user = await _userManager.FindByIdAsync(userId);
-                if (user != null)
+                if (ConnectionToUserMap.TryRemove(connectionId, out var userId))
                 {
-                    participants.Add(new { Id = user.Id.ToString(), FirstName = user.FirstName });
+                    await Clients.OthersInGroup(roomId).SendAsync("UserLeft", userId);
                 }
             }
-            
-            await Clients.Group(roomId).SendAsync("UpdateParticipantList", participants);
+            await base.OnDisconnectedAsync(exception);
         }
     }
 }
