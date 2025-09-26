@@ -23,7 +23,7 @@ namespace VidSync.Signaling.Hubs
         {
             var userId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId)) return;
-            
+
             var currentUser = await _userManager.FindByIdAsync(userId);
             if (currentUser == null) return;
 
@@ -42,18 +42,20 @@ namespace VidSync.Signaling.Hubs
                     existingParticipants.Add(new { Id = user.Id.ToString(), FirstName = user.FirstName });
                 }
             }
-            
+
             await Clients.Caller.SendAsync("ExistingParticipants", existingParticipants);
 
             await Groups.AddToGroupAsync(connectionId ?? string.Empty, roomId);
             ConnectionToRoomMap[connectionId ?? string.Empty] = roomId;
             ConnectionToUserMap[connectionId ?? string.Empty] = userId;
 
-            await Clients.OthersInGroup(roomId).SendAsync("UserJoined", new 
+            await Clients.OthersInGroup(roomId).SendAsync("UserJoined", new
             {
                 Id = currentUser.Id.ToString(),
                 FirstName = currentUser.FirstName
             });
+
+            Console.WriteLine($"User {currentUser.UserName} joined room {roomId}");
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
@@ -64,9 +66,49 @@ namespace VidSync.Signaling.Hubs
                 if (ConnectionToUserMap.TryRemove(connectionId, out var userId))
                 {
                     await Clients.OthersInGroup(roomId).SendAsync("UserLeft", userId);
+                    Console.WriteLine($"User {userId} left room {roomId}");
                 }
             }
             await base.OnDisconnectedAsync(exception);
+        }
+
+        public async Task SendOffer(string targetuserId, object offer)
+        {
+            var callingUserId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(callingUserId)) return;
+
+            var targetConnectionId = ConnectionToUserMap.FirstOrDefault(kvp => kvp.Value == targetuserId).Key;
+            if (!string.IsNullOrEmpty(targetConnectionId))
+            {
+                await Clients.Client(targetConnectionId).SendAsync("ReceiveOffer", offer);
+                Console.WriteLine($"Offer sent from {callingUserId} to {targetuserId}");
+            }
+        }
+
+        public async Task SendAnswer(string targetuserId, object answer)
+        {
+            var callingUserId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(callingUserId)) return;
+
+            var targetConnectionId = ConnectionToUserMap.FirstOrDefault(kvp => kvp.Value == targetuserId).Key;
+            if (!string.IsNullOrEmpty(targetConnectionId))
+            {
+                await Clients.Client(targetConnectionId).SendAsync("ReceiveAnswer", answer);
+                Console.WriteLine($"Answer sent from {callingUserId} to {targetuserId}");
+            }
+        }
+
+        public async Task SendIceCandidate(string targetuserId, object candidate)
+        {
+            var callingUserId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(callingUserId)) return;
+
+            var targetConnectionId = ConnectionToUserMap.FirstOrDefault(kvp => kvp.Value == targetuserId).Key;
+            if (!string.IsNullOrEmpty(targetConnectionId))
+            {
+                await Clients.Client(targetConnectionId).SendAsync("ReceiveIceCandidate", candidate);
+                Console.WriteLine($"ICE candidate sent from {callingUserId} to {targetuserId}");
+            }
         }
     }
 }
