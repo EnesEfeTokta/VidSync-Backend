@@ -101,9 +101,9 @@ builder.Services.AddSwaggerGen();
 
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    serverOptions.Listen(System.Net.IPAddress.Any, 5123);
+    serverOptions.Listen(IPAddress.Any, 5123);
 
-    serverOptions.Listen(System.Net.IPAddress.Any, 7123, listenOptions =>
+    serverOptions.Listen(IPAddress.Any, 7123, listenOptions =>
     {
         listenOptions.UseHttps("localhost+3.p12", "changeit"); 
     });
