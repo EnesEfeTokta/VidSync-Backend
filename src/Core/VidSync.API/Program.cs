@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using VidSync.Signaling.Hubs;
 using System.Security.Claims;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -94,11 +95,19 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddSignalR();
-
 builder.Services.AddAuthorization();
-
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(); 
+
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Listen(System.Net.IPAddress.Any, 5123);
+
+    serverOptions.Listen(System.Net.IPAddress.Any, 7123, listenOptions =>
+    {
+        listenOptions.UseHttps("localhost+3.p12", "changeit"); 
+    });
+});
 
 var app = builder.Build();
 
@@ -109,12 +118,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRouting();
-
 app.UseCors(MyAllowSpecificOrigins);
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
 app.MapHub<CommunicationHub>("/communicationhub");
 
 app.Run();

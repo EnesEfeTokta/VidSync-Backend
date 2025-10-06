@@ -62,4 +62,4 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-.vs/
+*.p12
