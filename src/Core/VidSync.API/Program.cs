@@ -7,17 +7,26 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using VidSync.Signaling.Hubs;
 using System.Security.Claims;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var MyAllowSpecificOrigins = "http://localhost:5173";
+var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(name: MyAllowSpecificOrigins,
                       policy =>
                       {
-                          policy.WithOrigins("http://localhost:5173")
+                            policy.WithOrigins(
+                                // Localhost adresleri
+                                "http://localhost:5173", 
+                                "https://localhost:5173",
+
+                                // IP adresleri
+                                "http://192.168.1.157:5173",
+                                "https://192.168.1.157:5173"
+                              )
                                 .AllowAnyHeader()
                                 .AllowAnyMethod()
                                 .AllowCredentials();
@@ -86,11 +95,19 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddSignalR();
-
 builder.Services.AddAuthorization();
-
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(); 
+
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Listen(IPAddress.Any, 5123);
+
+    serverOptions.Listen(IPAddress.Any, 7123, listenOptions =>
+    {
+        listenOptions.UseHttps("localhost+3.p12", "changeit"); 
+    });
+});
 
 var app = builder.Build();
 
@@ -101,12 +118,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRouting();
-
 app.UseCors(MyAllowSpecificOrigins);
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
 app.MapHub<CommunicationHub>("/communicationhub");
 
 app.Run();
