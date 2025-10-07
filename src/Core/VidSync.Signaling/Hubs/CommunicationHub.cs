@@ -4,7 +4,8 @@ using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using System.Collections.Concurrent;
 using VidSync.Domain.Entities;
-using System.Threading.Tasks;
+using VidSync.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace VidSync.Signaling.Hubs
 {
@@ -14,10 +15,12 @@ namespace VidSync.Signaling.Hubs
         private static readonly ConcurrentDictionary<string, string> ConnectionToRoomMap = new();
         private static readonly ConcurrentDictionary<string, string> ConnectionToUserMap = new();
         private readonly UserManager<User> _userManager;
+        private readonly AppDbContext _context;
 
-        public CommunicationHub(UserManager<User> userManager)
+        public CommunicationHub(UserManager<User> userManager, AppDbContext context)
         {
             _userManager = userManager;
+            _context = context;
         }
 
         public async Task JoinRoom(string roomId)
@@ -80,6 +83,7 @@ namespace VidSync.Signaling.Hubs
                 if (ConnectionToUserMap.TryRemove(connectionId, out var userId))
                 {
                     await Clients.OthersInGroup(roomId).SendAsync("UserLeft", userId);
+                    await Groups.RemoveFromGroupAsync(connectionId, roomId);
                     Console.WriteLine($"User {userId} left room {roomId}");
                 }
             }
@@ -159,7 +163,6 @@ namespace VidSync.Signaling.Hubs
 
             try
             {
-                // Gelen candidate string'inin geçerli bir JSON olup olmadığını kontrol et
                 System.Text.Json.JsonDocument.Parse(candidate);
             }
             catch (System.Text.Json.JsonException ex)
@@ -179,6 +182,51 @@ namespace VidSync.Signaling.Hubs
                 Console.WriteLine($"SendIceCandidate failed: No connection found for targetUserId: {targetUserId}");
                 throw new HubException($"No connection found for targetUserId: {targetUserId}");
             }
+        }
+
+        public async Task SendMessage(string messageContent)
+        {
+            if (!Guid.TryParse(Context.UserIdentifier, out var senderId))
+            {
+                return;
+            }
+
+            if (!ConnectionToRoomMap.TryGetValue(Context.ConnectionId, out var roomId))
+            {
+                return;
+            }
+
+            var message = new Message
+            {
+                Id = Guid.NewGuid(),
+                RoomId = Guid.Parse(roomId),
+                SenderId = senderId,
+                Content = messageContent,
+                SentAt = DateTime.UtcNow
+            };
+
+            _context.Messages.Add(message);
+            await _context.SaveChangesAsync();
+
+            var sender = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId);
+            if (sender == null)
+            {
+                return;
+            }
+
+            string senderName = sender != null ? $"{sender.FirstName} {sender.MiddleName} {sender.LastName}" : "Unknown";
+
+            var messageDto = new
+            {
+                Id = message.Id,
+                RoomId = message.RoomId,
+                SenderId = message.SenderId,
+                Content = message.Content,
+                SentAt = message.SentAt,
+                SenderName = senderName
+            };
+
+            await Clients.Group(roomId).SendAsync("ReceiveMessage", messageDto);
         }
     }
 }
