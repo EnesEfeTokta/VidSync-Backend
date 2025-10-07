@@ -65,7 +65,38 @@ namespace VidSync.API.Controllers
             _context.Rooms.Add(room);
             await _context.SaveChangesAsync();
 
-           return CreatedAtAction(nameof(GetRoom), new { id = room.Id }, room);
+            return CreatedAtAction(nameof(GetRoom), new { id = room.Id }, room);
+        }
+
+        [HttpGet("{roomId}/messages")]
+        public async Task<ActionResult<IEnumerable<MessageDto>>> GetRoomMessages(Guid roomId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 50)
+        {
+            const int maxPageSize = 100;
+            pageSize = Math.Min(pageSize, maxPageSize);
+
+            if (pageNumber <= 0 || pageSize <= 0)
+            {
+                ModelState.AddModelError("Pagination", "Page number and page size must be greater than zero.");
+                return ValidationProblem(ModelState);
+            }
+            
+            var messages = await _context.Messages
+                .Where(m => m.RoomId == roomId)
+                .OrderBy(m => m.SentAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(m => new MessageDto
+                {
+                    Id = m.Id,
+                    RoomId = m.RoomId,
+                    SenderId = m.SenderId,
+                    Content = m.Content,
+                    SenderName = $"{m.Sender.FirstName} {m.Sender.MiddleName} {m.Sender.LastName}",
+                    SentAt = m.SentAt
+                })
+                .ToListAsync();
+
+            return Ok(messages);
         }
     }
 }
