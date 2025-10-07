@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Domain\VidSync.Domain\VidSync.Domain.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\VidSync.Persistence\VidSync.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>
