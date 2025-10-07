@@ -1,5 +1,3 @@
-using System;
-
 namespace VidSync.Domain.Entities;
 
 public class Message
