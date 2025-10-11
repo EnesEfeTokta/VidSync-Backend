@@ -8,6 +8,7 @@ using System.Text;
 using VidSync.Signaling.Hubs;
 using System.Security.Claims;
 using System.Net;
+using VidSync.Signaling;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -93,6 +94,8 @@ builder.Services.AddAuthentication(options =>
         }
     };
 });
+
+builder.Services.AddSingleton<IConnectionManager, InMemoryConnectionManager>();
 
 builder.Services.AddSignalR();
 builder.Services.AddAuthorization();

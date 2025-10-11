@@ -12,19 +12,26 @@ namespace VidSync.Signaling.Hubs
     [Authorize]
     public class CommunicationHub : Hub
     {
-        private static readonly ConcurrentDictionary<string, string> ConnectionToRoomMap = new();
-        private static readonly ConcurrentDictionary<string, string> ConnectionToUserMap = new();
         private readonly UserManager<User> _userManager;
         private readonly AppDbContext _context;
+        private readonly IConnectionManager _connectionManager;
 
-        public CommunicationHub(UserManager<User> userManager, AppDbContext context)
+        public CommunicationHub(UserManager<User> userManager, AppDbContext context, IConnectionManager connectionManager)
         {
             _userManager = userManager;
             _context = context;
+            _connectionManager = connectionManager;
         }
 
-        public async Task JoinRoom(string roomId)
+        public async Task JoinRoom(Guid roomId)
         {
+            string roomIdStr = roomId.ToString();
+            if (string.IsNullOrEmpty(roomIdStr))
+            {
+                Console.WriteLine("JoinRoom failed: roomId is null or empty");
+                throw new HubException("roomId is null or empty");
+            }
+
             var userId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId))
             {
@@ -46,9 +53,7 @@ namespace VidSync.Signaling.Hubs
                 throw new HubException("ConnectionId is null or empty");
             }
 
-            var otherUserIdsInRoom = ConnectionToUserMap
-                .Where(kvp => kvp.Key != connectionId && ConnectionToRoomMap.ContainsKey(kvp.Key) && ConnectionToRoomMap[kvp.Key] == roomId)
-                .Select(kvp => kvp.Value).Distinct().ToList();
+            var otherUserIdsInRoom = await _connectionManager.GetUsersInRoomAsync(roomId, connectionId);
 
             var existingParticipants = new List<object>();
             foreach (var otherUserId in otherUserIdsInRoom)
@@ -62,136 +67,84 @@ namespace VidSync.Signaling.Hubs
 
             await Clients.Caller.SendAsync("ExistingParticipants", existingParticipants);
 
-            await Groups.AddToGroupAsync(connectionId, roomId);
-            ConnectionToRoomMap[connectionId] = roomId;
-            ConnectionToUserMap[connectionId] = userId;
+            await Groups.AddToGroupAsync(connectionId, roomIdStr);
+            _connectionManager.AddConnection(connectionId, userId, roomId);
 
-            await Clients.OthersInGroup(roomId).SendAsync("UserJoined", new
+            await Clients.OthersInGroup(roomIdStr).SendAsync("UserJoined", new
             {
                 Id = currentUser.Id.ToString(),
                 FirstName = currentUser.FirstName
             });
 
-            Console.WriteLine($"User {currentUser.UserName} joined room {roomId}");
+            Console.WriteLine($"User {currentUser.UserName} joined room {roomIdStr}");
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var connectionId = Context.ConnectionId;
-            if (ConnectionToRoomMap.TryRemove(connectionId, out var roomId))
+            var (userId, roomId) = _connectionManager.RemoveConnection(Context.ConnectionId);
+
+            if (userId != null && roomId != null)
             {
-                if (ConnectionToUserMap.TryRemove(connectionId, out var userId))
-                {
-                    await Clients.OthersInGroup(roomId).SendAsync("UserLeft", userId);
-                    await Groups.RemoveFromGroupAsync(connectionId, roomId);
-                    Console.WriteLine($"User {userId} left room {roomId}");
-                }
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
+                await Clients.OthersInGroup(roomId).SendAsync("UserLeft", userId);
+                Console.WriteLine($"User {userId} left room {roomId}");
             }
             await base.OnDisconnectedAsync(exception);
         }
 
-        public async Task SendOffer(string targetUserId, string serializedOffer)
+        private async Task SendSignalToUser(string targetUserId, string messageType, params object[] payload)
         {
-            var callingUserId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(callingUserId))
-            {
-                Console.WriteLine("SendOffer failed: CallingUserId is null or empty");
-                throw new HubException("CallingUserId is null or empty");
-            }
+            var callingUserId = Context.UserIdentifier!;
+            var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
 
-            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(serializedOffer))
-            {
-                Console.WriteLine($"SendOffer failed: Invalid parameters - targetUserId: {targetUserId}, serializedOffer: {serializedOffer}");
-                throw new HubException($"Invalid parameters - targetUserId: {targetUserId}, serializedOffer: {serializedOffer}");
-            }
-
-            var targetConnectionId = ConnectionToUserMap.FirstOrDefault(kvp => kvp.Value == targetUserId).Key;
             if (!string.IsNullOrEmpty(targetConnectionId))
             {
-                await Clients.Client(targetConnectionId).SendAsync("ReceiveOffer", callingUserId, serializedOffer);
-                Console.WriteLine($"Offer sent from {callingUserId} to {targetUserId}: {serializedOffer}");
+                var allArgs = new List<object> { callingUserId };
+                allArgs.AddRange(payload);
+                
+                await Clients.Client(targetConnectionId).SendCoreAsync(messageType, payload);
+                Console.WriteLine($"{messageType} sent from {callingUserId} to {targetUserId}");
             }
             else
             {
-                Console.WriteLine($"SendOffer failed: No connection found for targetUserId: {targetUserId}");
-                throw new HubException($"No connection found for targetUserId: {targetUserId}");
+                Console.WriteLine($"Send failed: No connection found for targetUserId: {targetUserId}");
+            }
+        }
+        
+        public async Task SendOffer(string targetUserId, string serializedOffer)
+        {
+            var callerId = Context.UserIdentifier!;
+            var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
+            if (!string.IsNullOrEmpty(targetConnectionId))
+            {
+                await Clients.Client(targetConnectionId).SendAsync("ReceiveOffer", callerId, serializedOffer);
             }
         }
 
         public async Task SendAnswer(string targetUserId, string serializedAnswer)
         {
-            var callingUserId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(callingUserId))
-            {
-                Console.WriteLine("SendAnswer failed: CallingUserId is null or empty");
-                throw new HubException("CallingUserId is null or empty");
-            }
-
-            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(serializedAnswer))
-            {
-                Console.WriteLine($"SendAnswer failed: Invalid parameters - targetUserId: {targetUserId}, serializedAnswer: {serializedAnswer}");
-                throw new HubException($"Invalid parameters - targetUserId: {targetUserId}, serializedAnswer: {serializedAnswer}");
-            }
-
-            var targetConnectionId = ConnectionToUserMap.FirstOrDefault(kvp => kvp.Value == targetUserId).Key;
+            var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
             if (!string.IsNullOrEmpty(targetConnectionId))
             {
                 await Clients.Client(targetConnectionId).SendAsync("ReceiveAnswer", serializedAnswer);
-                Console.WriteLine($"Answer sent from {callingUserId} to {targetUserId}: {serializedAnswer}");
-            }
-            else
-            {
-                Console.WriteLine($"SendAnswer failed: No connection found for targetUserId: {targetUserId}");
-                throw new HubException($"No connection found for targetUserId: {targetUserId}");
             }
         }
 
         public async Task SendIceCandidate(string targetUserId, string candidate)
         {
-            var callingUserId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(callingUserId))
-            {
-                Console.WriteLine("SendIceCandidate failed: CallingUserId is null or empty");
-                throw new HubException("CallingUserId is null or empty");
-            }
-
-            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(candidate))
-            {
-                Console.WriteLine($"SendIceCandidate failed: Invalid parameters - targetUserId: {targetUserId}, candidate: {candidate}");
-                throw new HubException($"Invalid parameters - targetUserId: {targetUserId}, candidate: {candidate}");
-            }
-
-            try
-            {
-                System.Text.Json.JsonDocument.Parse(candidate);
-            }
-            catch (System.Text.Json.JsonException ex)
-            {
-                Console.WriteLine($"SendIceCandidate failed: Invalid candidate JSON - {ex.Message}");
-                throw new HubException($"Invalid candidate JSON: {ex.Message}");
-            }
-
-            var targetConnectionId = ConnectionToUserMap.FirstOrDefault(kvp => kvp.Value == targetUserId).Key;
+            var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
             if (!string.IsNullOrEmpty(targetConnectionId))
             {
                 await Clients.Client(targetConnectionId).SendAsync("ReceiveIceCandidate", candidate);
-                Console.WriteLine($"ICE candidate sent from {callingUserId} to {targetUserId}: {candidate}");
-            }
-            else
-            {
-                Console.WriteLine($"SendIceCandidate failed: No connection found for targetUserId: {targetUserId}");
-                throw new HubException($"No connection found for targetUserId: {targetUserId}");
             }
         }
 
         public async Task SendMessage(string messageContent)
         {
-            if (!Guid.TryParse(Context.UserIdentifier, out var senderId))
-            {
-                return;
-            }
+            var senderId = Guid.Parse(Context.UserIdentifier!);
+            var roomIdString = await _connectionManager.GetRoomForConnectionAsync(Context.ConnectionId);
 
-            if (!ConnectionToRoomMap.TryGetValue(Context.ConnectionId, out var roomId))
+            if (string.IsNullOrEmpty(roomIdString) || !Guid.TryParse(roomIdString, out var roomId))
             {
                 return;
             }
@@ -199,7 +152,7 @@ namespace VidSync.Signaling.Hubs
             var message = new Message
             {
                 Id = Guid.NewGuid(),
-                RoomId = Guid.Parse(roomId),
+                RoomId = Guid.Parse(roomIdString),
                 SenderId = senderId,
                 Content = messageContent,
                 SentAt = DateTime.UtcNow
@@ -226,7 +179,7 @@ namespace VidSync.Signaling.Hubs
                 SenderName = senderName
             };
 
-            await Clients.Group(roomId).SendAsync("ReceiveMessage", messageDto);
+            await Clients.Group(roomIdString).SendAsync("ReceiveMessage", messageDto);
         }
     }
 }
