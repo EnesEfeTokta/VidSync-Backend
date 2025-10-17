@@ -9,6 +9,9 @@ using VidSync.Signaling.Hubs;
 using System.Security.Claims;
 using System.Net;
 using VidSync.Signaling;
+using VidSync.Domain.Interfaces;
+using VidSync.Persistence.Configurations;
+using VidSync.Persistence.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +54,10 @@ builder.Services.AddIdentityCore<User>(options =>
 })
 .AddRoles<IdentityRole<Guid>>()
 .AddEntityFrameworkStores<AppDbContext>();
+
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("SMTP"));
+
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
 builder.Services.AddControllers();
 
