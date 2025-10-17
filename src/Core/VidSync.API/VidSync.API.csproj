@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\..\Infrastructure\VidSync.Persistence\VidSync.Persistence.csproj" />
@@ -21,6 +21,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>c4d4b5bb-436a-4684-9996-ded5bec2b967</UserSecretsId>
   </PropertyGroup>
 
 </Project>
