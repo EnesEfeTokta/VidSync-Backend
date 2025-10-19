@@ -2,14 +2,19 @@ using Microsoft.EntityFrameworkCore;
 using VidSync.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using VidSync.Domain.Interfaces;
+using VidSync.Persistence.Converters;
 
 namespace VidSync.Persistence;
 
 public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options)
+    private readonly ICryptoService _cryptoService;
+
+    public AppDbContext(DbContextOptions<AppDbContext> options, ICryptoService cryptoService)
         : base(options)
     {
+        _cryptoService = cryptoService;
     }
 
     public DbSet<User> Users { get; set; } = null!;
@@ -19,6 +24,8 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        var encryptedConverter = new EncryptedStringConverter(_cryptoService);
 
         modelBuilder.Entity<User>(entity =>
         {
@@ -50,7 +57,7 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         {
             entity.ToTable("Messages");
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Content).IsRequired(true).HasMaxLength(1000);
+            entity.Property(e => e.Content).IsRequired(true).HasColumnType("text").HasConversion(encryptedConverter);
             entity.Property(e => e.SentAt).IsRequired(true).HasColumnType("timestamp with time zone").HasDefaultValueSql("NOW()");
 
             entity.HasOne(e => e.Sender)

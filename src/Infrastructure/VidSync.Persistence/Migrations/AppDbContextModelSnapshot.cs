@@ -160,8 +160,7 @@ namespace VidSync.Persistence.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("RoomId")
                         .HasColumnType("uuid");
