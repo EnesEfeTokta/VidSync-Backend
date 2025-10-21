@@ -2,10 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
-using System.Collections.Concurrent;
 using VidSync.Domain.Entities;
 using VidSync.Persistence;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 
 namespace VidSync.Signaling.Hubs
 {
@@ -15,12 +15,18 @@ namespace VidSync.Signaling.Hubs
         private readonly UserManager<User> _userManager;
         private readonly AppDbContext _context;
         private readonly IConnectionManager _connectionManager;
+        private readonly IConnectionMultiplexer _redis;
 
-        public CommunicationHub(UserManager<User> userManager, AppDbContext context, IConnectionManager connectionManager)
+        public CommunicationHub(
+            UserManager<User> userManager,
+            AppDbContext context,
+            IConnectionManager connectionManager,
+            IConnectionMultiplexer redis)
         {
             _userManager = userManager;
             _context = context;
             _connectionManager = connectionManager;
+            _redis = redis;
         }
 
         public async Task JoinRoom(Guid roomId)
@@ -53,6 +59,26 @@ namespace VidSync.Signaling.Hubs
                 throw new HubException("ConnectionId is null or empty");
             }
 
+            string ipAddress = GetIpAddress();
+            var db = _redis.GetDatabase();
+            var redisKey = $"active_users:{roomIdStr}";
+            await db.SetAddAsync(redisKey, userId);
+
+            var roomSession = await GetOrCreateActiveRoomSession(Guid.Parse(roomIdStr));
+
+            var activity = new ParticipantActivity
+            {
+                Id = Guid.NewGuid(),
+                RoomSessionId = roomSession.Id,
+                UserId = currentUser.Id,
+                IpAddress = ipAddress,
+                JoinTime = DateTime.UtcNow
+            };
+            _context.ParticipantActivities.Add(activity);
+            await _context.SaveChangesAsync();
+
+            Context.Items["ParticipantActivityId"] = activity.Id;
+
             var otherUserIdsInRoom = await _connectionManager.GetUsersInRoomAsync(roomId, connectionId);
 
             var existingParticipants = new List<object>();
@@ -76,18 +102,34 @@ namespace VidSync.Signaling.Hubs
                 FirstName = currentUser.FirstName
             });
 
-            Console.WriteLine($"User {currentUser.UserName} joined room {roomIdStr}");
+            Console.WriteLine($"User {currentUser.UserName} and Ip: {ipAddress} joined room {roomIdStr}");
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var (userId, roomId) = _connectionManager.RemoveConnection(Context.ConnectionId);
+            var connectionId = Context.ConnectionId;
+            var (userId, roomIdStr) = _connectionManager.RemoveConnection(Context.ConnectionId);
 
-            if (userId != null && roomId != null)
+            if (userId != null && roomIdStr != null)
             {
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
-                await Clients.OthersInGroup(roomId).SendAsync("UserLeft", userId);
-                Console.WriteLine($"User {userId} left room {roomId}");
+                var db = _redis.GetDatabase();
+                var redisKey = $"active_users:{roomIdStr}";
+
+                await db.SetRemoveAsync(redisKey, userId);
+
+                if (Context.Items.TryGetValue("ParticipantActivityId", out var activityIdObj) && activityIdObj is Guid activityId)
+                {
+                    var activity = await _context.ParticipantActivities.FindAsync(activityId);
+                    if (activity != null && activity.LeaveTime == null)
+                    {
+                        activity.LeaveTime = DateTime.UtcNow;
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomIdStr);
+                await Clients.OthersInGroup(roomIdStr).SendAsync("UserLeft", userId);
+                Console.WriteLine($"User {userId} left room {roomIdStr}");
             }
             await base.OnDisconnectedAsync(exception);
         }
@@ -180,6 +222,33 @@ namespace VidSync.Signaling.Hubs
             };
 
             await Clients.Group(roomIdString).SendAsync("ReceiveMessage", messageDto);
+        }
+
+        private async Task<RoomSession> GetOrCreateActiveRoomSession(Guid roomId)
+        {
+            var roomSession = await _context.RoomSessions
+                .FirstOrDefaultAsync(rs => rs.RoomId == roomId && rs.EndTime == null);
+
+            if (roomSession == null)
+            {
+                roomSession = new RoomSession
+                {
+                    Id = Guid.NewGuid(),
+                    RoomId = roomId,
+                    StartTime = DateTime.UtcNow
+                };
+                _context.RoomSessions.Add(roomSession);
+                await _context.SaveChangesAsync();
+            }
+
+            return roomSession;
+        }
+
+        private string GetIpAddress()
+        {
+            var httpContext = Context.GetHttpContext();
+            var ipAddress = httpContext?.Connection.RemoteIpAddress?.ToString();
+            return ipAddress ?? "Unknown";
         }
     }
 }

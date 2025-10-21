@@ -20,6 +20,8 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Room> Rooms { get; set; } = null!;
     public DbSet<Message> Messages { get; set; } = null!;
+    public DbSet<RoomSession> RoomSessions { get; set; } = null!;
+    public DbSet<ParticipantActivity> ParticipantActivities { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +73,37 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => e.SentAt);
+        });
+
+        modelBuilder.Entity<RoomSession>(entity =>
+        {
+            entity.ToTable("RoomSessions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StartTime).IsRequired(true).HasColumnType("timestamp with time zone").HasDefaultValueSql("NOW()");
+            entity.Property(e => e.EndTime).IsRequired(false).HasColumnType("timestamp with time zone");
+
+            entity.HasOne<Room>()
+                  .WithMany()
+                  .HasForeignKey(e => e.RoomId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.StartTime);
+        });
+
+        modelBuilder.Entity<ParticipantActivity>(entity =>
+        {
+            entity.ToTable("ParticipantActivities");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.IpAddress).IsRequired(true).HasMaxLength(45);
+            entity.Property(e => e.JoinTime).IsRequired(true).HasColumnType("timestamp with time zone").HasDefaultValueSql("NOW()");
+            entity.Property(e => e.LeaveTime).IsRequired(false).HasColumnType("timestamp with time zone");
+
+            entity.HasOne(e => e.RoomSession)
+                  .WithMany()
+                  .HasForeignKey(e => e.RoomSessionId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.JoinTime);
         });
     }
 }

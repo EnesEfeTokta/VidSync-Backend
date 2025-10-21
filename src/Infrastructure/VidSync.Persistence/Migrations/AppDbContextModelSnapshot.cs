@@ -184,6 +184,40 @@ namespace VidSync.Persistence.Migrations
                     b.ToTable("Messages", (string)null);
                 });
 
+            modelBuilder.Entity("VidSync.Domain.Entities.ParticipantActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IpAddress")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<DateTime>("JoinTime")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime?>("LeaveTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RoomSessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JoinTime");
+
+                    b.HasIndex("RoomSessionId");
+
+                    b.ToTable("ParticipantActivities", (string)null);
+                });
+
             modelBuilder.Entity("VidSync.Domain.Entities.Room", b =>
                 {
                     b.Property<Guid>("Id")
@@ -214,6 +248,32 @@ namespace VidSync.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Rooms", (string)null);
+                });
+
+            modelBuilder.Entity("VidSync.Domain.Entities.RoomSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EndTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartTime")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("StartTime");
+
+                    b.ToTable("RoomSessions", (string)null);
                 });
 
             modelBuilder.Entity("VidSync.Domain.Entities.User", b =>
@@ -380,6 +440,26 @@ namespace VidSync.Persistence.Migrations
                     b.Navigation("Room");
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("VidSync.Domain.Entities.ParticipantActivity", b =>
+                {
+                    b.HasOne("VidSync.Domain.Entities.RoomSession", "RoomSession")
+                        .WithMany()
+                        .HasForeignKey("RoomSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RoomSession");
+                });
+
+            modelBuilder.Entity("VidSync.Domain.Entities.RoomSession", b =>
+                {
+                    b.HasOne("VidSync.Domain.Entities.Room", null)
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }
