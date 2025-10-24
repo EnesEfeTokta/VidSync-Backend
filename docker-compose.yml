@@ -1,4 +1,23 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vidsync_api
+    ports:
+      - "7123:7123" # HTTPS
+      - "5123:5123" # HTTP
+    environment:
+      - ASPNETCORE_URLS=https://+:7123;http://+:5123
+      - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}
+      - ConnectionStrings__Redis=redis:6379
+    volumes:
+      - ./src/Core/VidSync.API/localhost+3.p12:/app/localhost+3.p12:ro
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
   db:
     image: postgres:15
     container_name: vidsync_db

@@ -1,0 +1,5 @@
+# *.pfx
+# .certs/
+
+[Bb]in/
+[Oo]bj/
