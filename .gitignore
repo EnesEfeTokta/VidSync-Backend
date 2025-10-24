@@ -10,6 +10,7 @@
 # Environments
 .env
 *.local
+.certs/
 
 # App settings
 src/Core/VidSync.API/appsettings.Development.json
