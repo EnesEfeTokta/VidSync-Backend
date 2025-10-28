@@ -11,6 +11,9 @@ services:
       - ASPNETCORE_URLS=https://+:7123;http://+:5123
       - ConnectionStrings__DefaultConnection=Host=db;Port=5432;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}
       - ConnectionStrings__Redis=redis:6379
+      - JWT__Key=${JWT__Key}
+      - JWT__Issuer=${JWT__Issuer}
+      - JWT__Audience=${JWT__Audience}
     volumes:
       - ./src/Core/VidSync.API/localhost+3.p12:/app/localhost+3.p12:ro
     depends_on:
@@ -37,6 +40,16 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: vidsync_cloudflared
+    restart: unless-stopped
+    command: tunnel run vidsync-tunnel
+    volumes:
+      - ./cloudflared:/etc/cloudflared
+    depends_on:
+      - api
 
 volumes:
   vidsync_data:

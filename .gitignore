@@ -10,7 +10,7 @@
 # Environments
 .env
 *.local
-.certs/
+cloudflared
 
 # App settings
 src/Core/VidSync.API/appsettings.Development.json
