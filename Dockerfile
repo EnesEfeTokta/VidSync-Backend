@@ -1,8 +1,6 @@
-# Stage 1: Build aplication
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /app
 
-# NuGet paketlerini optimize etmek için önce proje dosyalarını kopyala
 COPY *.sln .
 COPY src/Core/VidSync.API/*.csproj ./src/Core/VidSync.API/
 COPY src/Core/VidSync.Signaling/*.csproj ./src/Core/VidSync.Signaling/

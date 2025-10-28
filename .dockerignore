@@ -1,5 +1,13 @@
-# *.pfx
-# .certs/
-
-[Bb]in/
-[Oo]bj/
+**/.dockerignore
+**/.env
+**/.git
+**/.gitignore
+**/.vs
+**/.vscode
+**/bin/
+**/obj/
+**/Dockerfile
+**/Dockerfile.*
+**/docker-compose.yml
+**/docker-compose.*.yml
+README.md
