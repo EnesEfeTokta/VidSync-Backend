@@ -13,6 +13,7 @@ using VidSync.Domain.Interfaces;
 using VidSync.Persistence.Configurations;
 using VidSync.Persistence.Services;
 using StackExchange.Redis;
+using VidSync.Persistence.Services.AiService.Clients;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,6 +66,14 @@ builder.Services.AddIdentityCore<User>(options =>
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("SMTP"));
 
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+
+builder.Services.AddScoped<IConversationSummarizationService, ConversationSummarizationService>();
+
+builder.Services.AddHttpClient<IAiServiceClient, AiServiceClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["AiService:BaseUrl"]);
+
+});
 
 builder.Services.AddControllers();
 

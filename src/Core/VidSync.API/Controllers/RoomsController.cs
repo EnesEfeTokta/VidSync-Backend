@@ -4,6 +4,7 @@ using VidSync.Persistence;
 using VidSync.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using VidSync.API.DTOs;
+using VidSync.Domain.Interfaces;
 
 namespace VidSync.API.Controllers
 {
@@ -13,10 +14,12 @@ namespace VidSync.API.Controllers
     public class RoomsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IConversationSummarizationService _summarizationService;
 
-        public RoomsController(AppDbContext context)
+        public RoomsController(AppDbContext context, IConversationSummarizationService summarizationService)
         {
             _context = context;
+            _summarizationService = summarizationService;
         }
 
         [HttpGet]
@@ -79,7 +82,7 @@ namespace VidSync.API.Controllers
                 ModelState.AddModelError("Pagination", "Page number and page size must be greater than zero.");
                 return ValidationProblem(ModelState);
             }
-            
+
             var messages = await _context.Messages
                 .Where(m => m.RoomId == roomId)
                 .OrderBy(m => m.SentAt)
@@ -97,6 +100,37 @@ namespace VidSync.API.Controllers
                 .ToListAsync();
 
             return Ok(messages);
+        }
+        
+        [HttpPost("{roomId}/summarize")]
+        [ProducesResponseType(StatusCodes.Status202Accepted)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status502BadGateway)]
+        public async Task<IActionResult> SummarizeRoomContent(Guid roomId)
+        {
+            try
+            {
+                // Tek yaptığı iş, görevi bizim servisimize devretmek.
+                await _summarizationService.SummarizeAndSaveAsync(roomId);
+                
+                // İşlem başlatıldı, yanıt olarak "Kabul Edildi" dönüyoruz.
+                return Accepted(new { message = "Summarization process has been initiated." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                // Servisimiz "Room not found" hatası fırlatırsa 404 dönüyoruz.
+                return NotFound(new { message = ex.Message });
+            }
+            catch (HttpRequestException ex)
+            {
+                // AiServiceClient "AI service failed" hatası fırlatırsa 502 dönüyoruz.
+                return StatusCode(StatusCodes.Status502BadGateway, new { message = "The AI service is currently unavailable.", details = ex.Message });
+            }
+            catch // Diğer tüm beklenmedik hatalar için
+            {
+                // Hataları logla (ileride) ve genel bir sunucu hatası dön.
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An unexpected error occurred." });
+            }
         }
     }
 }
