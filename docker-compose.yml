@@ -45,9 +45,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: vidsync_cloudflared
     restart: unless-stopped
-    command: tunnel run vidsync-tunnel
-    volumes:
-      - ./cloudflared:/etc/cloudflared
+    command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - api
 
