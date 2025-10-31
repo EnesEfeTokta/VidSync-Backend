@@ -51,6 +51,7 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
             entity.Property(e => e.CreatedAt).IsRequired(true).HasColumnType("timestamp with time zone").HasDefaultValueSql("NOW()");
             entity.Property(e => e.ExpiresAt).IsRequired(false).HasColumnType("timestamp with time zone");
             entity.Property(e => e.IsActive).IsRequired(true).HasDefaultValue(true);
+            entity.Property(e => e.Summary).IsRequired(false).HasColumnType("text");
 
             entity.HasIndex(e => e.Name).IsUnique();
         });

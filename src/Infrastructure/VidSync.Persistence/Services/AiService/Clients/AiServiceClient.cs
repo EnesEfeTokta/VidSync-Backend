@@ -16,7 +16,7 @@ public class AiServiceClient : IAiServiceClient
 
     public async Task<ConversationSummaryResponse> GetSummaryAsync(ConversationPayloadRequest payload)
     {
-        var response = await _httpClient.PostAsJsonAsync("summarize", payload);
+        var response = await _httpClient.PostAsJsonAsync("summarize-chat", payload);
 
         if (!response.IsSuccessStatusCode)
         {

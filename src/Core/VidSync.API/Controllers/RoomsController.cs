@@ -28,7 +28,7 @@ namespace VidSync.API.Controllers
             var rooms = await _context.Rooms.ToListAsync();
             if (rooms == null || !rooms.Any())
             {
-                ModelState.AddModelError("Room", "Room is already in use.");
+                ModelState.AddModelError("Room", "No rooms found.");
                 return ValidationProblem(ModelState);
             }
             return Ok(rooms);
@@ -55,7 +55,7 @@ namespace VidSync.API.Controllers
                 .FirstOrDefaultAsync(r => r.Name.ToLower() == createRoomDto.Name.ToLower());
             if (existingRoom != null)
             {
-                ModelState.AddModelError("Room", "Room is already in use.");
+                ModelState.AddModelError("Room", "Room name is already in use.");
                 return ValidationProblem(ModelState);
             }
 
@@ -110,25 +110,20 @@ namespace VidSync.API.Controllers
         {
             try
             {
-                // Tek yaptığı iş, görevi bizim servisimize devretmek.
                 await _summarizationService.SummarizeAndSaveAsync(roomId);
                 
-                // İşlem başlatıldı, yanıt olarak "Kabul Edildi" dönüyoruz.
                 return Accepted(new { message = "Summarization process has been initiated." });
             }
             catch (KeyNotFoundException ex)
             {
-                // Servisimiz "Room not found" hatası fırlatırsa 404 dönüyoruz.
                 return NotFound(new { message = ex.Message });
             }
             catch (HttpRequestException ex)
             {
-                // AiServiceClient "AI service failed" hatası fırlatırsa 502 dönüyoruz.
                 return StatusCode(StatusCodes.Status502BadGateway, new { message = "The AI service is currently unavailable.", details = ex.Message });
             }
-            catch // Diğer tüm beklenmedik hatalar için
+            catch
             {
-                // Hataları logla (ileride) ve genel bir sunucu hatası dön.
                 return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An unexpected error occurred." });
             }
         }

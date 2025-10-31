@@ -1,145 +1,52 @@
-using Microsoft.EntityFrameworkCore;
-using VidSync.Domain.Entities;
-using Microsoft.AspNetCore.Identity;
-using VidSync.Persistence;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using VidSync.Signaling.Hubs;
-using System.Security.Claims;
 using System.Net;
-using VidSync.Signaling;
-using VidSync.Domain.Interfaces;
-using VidSync.Persistence.Configurations;
-using VidSync.Persistence.Services;
-using StackExchange.Redis;
-using VidSync.Persistence.Services.AiService.Clients;
+using VidSync.Persistence;
+using VidSync.Signaling.Hubs;
+using VidSync.API.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+var configuration = builder.Configuration;
 
 var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
-
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(name: MyAllowSpecificOrigins,
-                      policy =>
-                      {
-                            policy.WithOrigins(
-                                // Localhost adresleri
-                                "http://localhost:5173",
-                                "https://localhost:5173",
-
-                                // IP adresleri
-                                "http://192.168.1.157:5173",
-                                "https://192.168.1.157:5173",
-
-                                // Üretim domain adresleri
-                                "https://vidsync-front.enesefetokta.shop"
-                              )
-                                .AllowAnyHeader()
-                                .AllowAnyMethod()
-                                .AllowCredentials();
-                      });
+    options.AddPolicy(name: MyAllowSpecificOrigins, policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:5173",
+                "https://localhost:5173",
+                "http://192.168.1.157:5173",
+                "https://192.168.1.157:5173",
+                "https://vidsync-front.enesefetokta.shop"
+              )
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
 });
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// Servisleri mantıksal gruplar halinde kaydediyoruz
+builder.Services.AddInfrastructureServices(configuration);
+builder.Services.AddIdentityServices(configuration);
+builder.Services.AddSignalingServices();
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString));
-
-builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
-    ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("Redis")));
-
-builder.Services.Configure<CryptoSettings>(builder.Configuration.GetSection("CryptoSettings"));
-builder.Services.AddScoped<ICryptoService, AesCryptoService>();
-
-builder.Services.AddIdentityCore<User>(options =>
-{
-    options.User.RequireUniqueEmail = true;
-    options.Password.RequireDigit = true;
-    options.Password.RequireLowercase = true;
-    options.Password.RequireNonAlphanumeric = false;
-    options.Password.RequireUppercase = true;
-    options.Password.RequiredLength = 8;
-    options.Password.RequiredUniqueChars = 1;
-})
-.AddRoles<IdentityRole<Guid>>()
-.AddEntityFrameworkStores<AppDbContext>();
-
-builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("SMTP"));
-
-builder.Services.AddScoped<IEmailService, SmtpEmailService>();
-
-builder.Services.AddScoped<IConversationSummarizationService, ConversationSummarizationService>();
-
-builder.Services.AddHttpClient<IAiServiceClient, AiServiceClient>(client =>
-{
-    client.BaseAddress = new Uri(builder.Configuration["AiService:BaseUrl"]);
-
-});
-
+// Web API katmanına özgü servisler
 builder.Services.AddControllers();
-
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
-}).AddJwtBearer(options =>
-{
-    options.MapInboundClaims = false;
-
-    options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuer = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-
-        ValidateAudience = true,
-        ValidAudience = builder.Configuration["Jwt:Audience"],
-
-        ValidateLifetime = true,
-
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-
-        NameClaimType = ClaimTypes.NameIdentifier
-    };
-    options.Events = new JwtBearerEvents
-    {
-        OnMessageReceived = context =>
-        {
-            var accessToken = context.Request.Query["access_token"];
-
-            var path = context.HttpContext.Request.Path;
-            if (!string.IsNullOrEmpty(accessToken) &&
-                (path.StartsWithSegments("/communicationhub")))
-            {
-                context.Token = accessToken;
-            }
-            return Task.CompletedTask;
-        }
-    };
-});
-
-builder.Services.AddSingleton<IConnectionManager, InMemoryConnectionManager>();
-
-builder.Services.AddSignalR();
-builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(); 
+builder.Services.AddSwaggerGen();
 
+// Kestrel sunucu yapılandırması
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.Listen(IPAddress.Any, 5123);
-
     serverOptions.Listen(IPAddress.Any, 7123, listenOptions =>
     {
-        listenOptions.UseHttps("localhost+3.p12", "changeit"); 
+        listenOptions.UseHttps("localhost+3.p12", "changeit");
     });
 });
 
 var app = builder.Build();
 
+// Middleware pipeline'ı yapılandırma
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -148,10 +55,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseRouting();
 app.UseCors(MyAllowSpecificOrigins);
+
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
 
+// SignalR Hub endpoint'leri
 app.MapHub<CommunicationHub>("/communicationhub");
 app.MapHub<TranscriptionHub>("/transcriptionhub");
 
