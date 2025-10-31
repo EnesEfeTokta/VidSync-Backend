@@ -26,12 +26,15 @@ builder.Services.AddCors(options =>
                       {
                             policy.WithOrigins(
                                 // Localhost adresleri
-                                "http://localhost:5173", 
+                                "http://localhost:5173",
                                 "https://localhost:5173",
 
                                 // IP adresleri
                                 "http://192.168.1.157:5173",
-                                "https://192.168.1.157:5173"
+                                "https://192.168.1.157:5173",
+
+                                // Üretim domain adresleri
+                                "https://vidsync-front.enesefetokta.shop"
                               )
                                 .AllowAnyHeader()
                                 .AllowAnyMethod()
@@ -148,6 +151,8 @@ app.UseCors(MyAllowSpecificOrigins);
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
 app.MapHub<CommunicationHub>("/communicationhub");
+app.MapHub<TranscriptionHub>("/transcriptionhub");
 
 app.Run();
