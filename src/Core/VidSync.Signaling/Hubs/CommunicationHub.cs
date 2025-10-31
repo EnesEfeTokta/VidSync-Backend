@@ -29,33 +29,29 @@ namespace VidSync.Signaling.Hubs
             _redis = redis;
         }
 
-        public async Task JoinRoom(Guid roomId)
+        public async Task joinRoom(Guid roomId)
         {
             string roomIdStr = roomId.ToString();
             if (string.IsNullOrEmpty(roomIdStr))
             {
-                Console.WriteLine("JoinRoom failed: roomId is null or empty");
                 throw new HubException("roomId is null or empty");
             }
 
             var userId = Context?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId))
             {
-                Console.WriteLine("JoinRoom failed: UserId is null or empty");
                 throw new HubException("UserId is null or empty");
             }
 
             var currentUser = await _userManager.FindByIdAsync(userId);
             if (currentUser == null)
             {
-                Console.WriteLine($"JoinRoom failed: User not found for UserId: {userId}");
                 throw new HubException($"User not found for UserId: {userId}");
             }
 
             var connectionId = Context?.ConnectionId;
             if (string.IsNullOrEmpty(connectionId))
             {
-                Console.WriteLine("JoinRoom failed: ConnectionId is null or empty");
                 throw new HubException("ConnectionId is null or empty");
             }
 
@@ -87,19 +83,19 @@ namespace VidSync.Signaling.Hubs
                 var user = await _userManager.FindByIdAsync(otherUserId);
                 if (user != null)
                 {
-                    existingParticipants.Add(new { Id = user.Id.ToString(), FirstName = user.FirstName });
+                    existingParticipants.Add(new { id = user.Id.ToString(), firstName = user.FirstName });
                 }
             }
 
-            await Clients.Caller.SendAsync("ExistingParticipants", existingParticipants);
+            await Clients.Caller.SendAsync("existingParticipants", existingParticipants);
 
             await Groups.AddToGroupAsync(connectionId, roomIdStr);
             _connectionManager.AddConnection(connectionId, userId, roomId);
 
-            await Clients.OthersInGroup(roomIdStr).SendAsync("UserJoined", new
+            await Clients.OthersInGroup(roomIdStr).SendAsync("userJoined", new
             {
-                Id = currentUser.Id.ToString(),
-                FirstName = currentUser.FirstName
+                id = currentUser.Id.ToString(),
+                firstName = currentUser.FirstName
             });
 
             Console.WriteLine($"User {currentUser.UserName} and Ip: {ipAddress} joined room {roomIdStr}");
@@ -128,100 +124,103 @@ namespace VidSync.Signaling.Hubs
                 }
 
                 await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomIdStr);
-                await Clients.OthersInGroup(roomIdStr).SendAsync("UserLeft", userId);
+                await Clients.OthersInGroup(roomIdStr).SendAsync("userLeft", userId);
                 Console.WriteLine($"User {userId} left room {roomIdStr}");
             }
             await base.OnDisconnectedAsync(exception);
         }
-
-        private async Task SendSignalToUser(string targetUserId, string messageType, params object[] payload)
-        {
-            var callingUserId = Context.UserIdentifier!;
-            var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
-
-            if (!string.IsNullOrEmpty(targetConnectionId))
-            {
-                var allArgs = new List<object> { callingUserId };
-                allArgs.AddRange(payload);
-                
-                await Clients.Client(targetConnectionId).SendCoreAsync(messageType, payload);
-                Console.WriteLine($"{messageType} sent from {callingUserId} to {targetUserId}");
-            }
-            else
-            {
-                Console.WriteLine($"Send failed: No connection found for targetUserId: {targetUserId}");
-            }
-        }
         
-        public async Task SendOffer(string targetUserId, string serializedOffer)
+        public async Task sendOffer(string targetUserId, string serializedOffer)
         {
             var callerId = Context.UserIdentifier!;
             var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
             if (!string.IsNullOrEmpty(targetConnectionId))
             {
-                await Clients.Client(targetConnectionId).SendAsync("ReceiveOffer", callerId, serializedOffer);
+                await Clients.Client(targetConnectionId).SendAsync("receiveOffer", callerId, serializedOffer);
             }
         }
 
-        public async Task SendAnswer(string targetUserId, string serializedAnswer)
+        public async Task sendAnswer(string targetUserId, string serializedAnswer)
         {
             var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
             if (!string.IsNullOrEmpty(targetConnectionId))
             {
-                await Clients.Client(targetConnectionId).SendAsync("ReceiveAnswer", serializedAnswer);
+                await Clients.Client(targetConnectionId).SendAsync("receiveAnswer", serializedAnswer);
             }
         }
 
-        public async Task SendIceCandidate(string targetUserId, string candidate)
+        public async Task sendIceCandidate(string targetUserId, string candidate)
         {
             var targetConnectionId = await _connectionManager.GetConnectionIdAsync(targetUserId);
             if (!string.IsNullOrEmpty(targetConnectionId))
             {
-                await Clients.Client(targetConnectionId).SendAsync("ReceiveIceCandidate", candidate);
+                await Clients.Client(targetConnectionId).SendAsync("receiveIceCandidate", candidate);
             }
         }
 
-        public async Task SendMessage(string messageContent)
+        public async Task sendMessage(string messageContent)
         {
-            var senderId = Guid.Parse(Context.UserIdentifier!);
-            var roomIdString = await _connectionManager.GetRoomForConnectionAsync(Context.ConnectionId);
-
-            if (string.IsNullOrEmpty(roomIdString) || !Guid.TryParse(roomIdString, out var roomId))
+            try
             {
-                return;
+                var senderIdString = Context.UserIdentifier;
+                if (string.IsNullOrEmpty(senderIdString) || !Guid.TryParse(senderIdString, out var senderId))
+                {
+                    Console.WriteLine("SendMessage Error: SenderId is not a valid Guid.");
+                    return;
+                }
+
+                var roomIdString = await _connectionManager.GetRoomForConnectionAsync(Context.ConnectionId);
+
+                if (string.IsNullOrEmpty(roomIdString) || !Guid.TryParse(roomIdString, out var roomId))
+                {
+                    Console.WriteLine($"SendMessage Error: RoomId could not be found for connection {Context.ConnectionId}.");
+                    return;
+                }
+
+                var message = new Message
+                {
+                    Id = Guid.NewGuid(),
+                    RoomId = roomId,
+                    SenderId = senderId,
+                    Content = messageContent,
+                    SentAt = DateTime.UtcNow
+                };
+
+                _context.Messages.Add(message);
+                await _context.SaveChangesAsync();
+
+                var sender = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId);
+                if (sender == null)
+                {
+                    Console.WriteLine($"SendMessage Warning: Sender with Id {senderId} not found in Users table.");
+                    return;
+                }
+
+                var senderNameParts = new[] { sender.FirstName, sender.MiddleName, sender.LastName };
+                string senderName = string.Join(" ", senderNameParts.Where(s => !string.IsNullOrEmpty(s)));
+
+                var messageDto = new
+                {
+                    id = message.Id,
+                    roomId = message.RoomId,
+                    senderId = message.SenderId,
+                    content = message.Content,
+                    sentAt = message.SentAt,
+                    senderName
+                };
+
+                await Clients.Group(roomIdString).SendAsync("receiveMessage", messageDto);
             }
-
-            var message = new Message
+            catch (Exception ex)
             {
-                Id = Guid.NewGuid(),
-                RoomId = Guid.Parse(roomIdString),
-                SenderId = senderId,
-                Content = messageContent,
-                SentAt = DateTime.UtcNow
-            };
-
-            _context.Messages.Add(message);
-            await _context.SaveChangesAsync();
-
-            var sender = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId);
-            if (sender == null)
-            {
-                return;
+                Console.WriteLine($"!!!!!! CRITICAL ERROR IN sendMessage !!!!!!");
+                Console.WriteLine($"Exception: {ex}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"--- Inner Exception: {ex.InnerException}");
+                }
+                throw new HubException("An error occurred while sending the message.", ex);
             }
-
-            string senderName = sender != null ? $"{sender.FirstName} {sender.MiddleName} {sender.LastName}" : "Unknown";
-
-            var messageDto = new
-            {
-                Id = message.Id,
-                RoomId = message.RoomId,
-                SenderId = message.SenderId,
-                Content = message.Content,
-                SentAt = message.SentAt,
-                SenderName = senderName
-            };
-
-            await Clients.Group(roomIdString).SendAsync("ReceiveMessage", messageDto);
         }
 
         private async Task<RoomSession> GetOrCreateActiveRoomSession(Guid roomId)
