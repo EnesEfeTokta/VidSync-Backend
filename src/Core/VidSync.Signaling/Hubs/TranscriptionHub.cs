@@ -34,4 +34,9 @@ public class TranscriptionHub : Hub
             Console.WriteLine($"User {userId} stopped streaming audio for session {sessionId}");
         }
     }
+
+    public async Task SendTranscriptionResult(string sessionId, string transcript, bool isFinal)
+    {
+        await Clients.Group(sessionId).SendAsync("ReceiveTranscript", transcript, isFinal);
+    }
 }
