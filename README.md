@@ -3,19 +3,29 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Build](https://github.com/EnesEfeTokta/VidSync-Backend/actions/workflows/dotnet-ci.yml/badge.svg)](https://github.com/EnesEfeTokta/VidSync-Backend/actions/workflows/dotnet-ci.yml)
 
-**VidSync** is a real-time communication platform designed to provide seamless 1-on-1 video and audio calls directly in the browser. This repository contains the backend services powering the application, built with .NET 8, ASP.NET Core, and SignalR, following Clean Architecture principles.
+**VidSync** is a real-time communication platform designed for seamless 1-on-1 video/audio calls, chat, screen sharing, and more, directly in the browser. This repository contains the backend services powering the application, built with .NET, ASP.NET Core, and SignalR, following Clean Architecture principles.
 
 The backend is responsible for user authentication, room management, and signaling for WebRTC peer-to-peer connections.
 
+## 🌐 The VidSync Ecosystem
+
+VidSync is a modular project composed of multiple repositories working together:
+
+-   **➡️ VidSync-Backend (You are here):** The core API, real-time signaling server, and database logic.
+-   [**VidSync-Frontend**](https://github.com/EnesEfeTokta/VidSync-Frontend): The client-side application built with a modern web framework for users to interact with.
+-   [**VidSync-AI**](https://github.com/EnesEfeTokta/VidSync-AI): A separate service providing AI-powered features for the platform.
+
 ## ✨ Features (Roadmap)
 
--   **User Authentication:** Secure user registration and login using JWT.
--   **Room Management:** Create and join private communication rooms.
--   **WebRTC Signaling:** Real-time signaling server using SignalR to facilitate peer connections.
--   **1-on-1 Video/Audio Calls:** Direct, low-latency P2P media streams.
--   **In-Room Chat:** Real-time text messaging during calls.
--   **Screen Sharing:** Share your screen with the other participant.
--   **Virtual Whiteboard:** Collaborate with a shared drawing canvas.
+-   ✅ **User Authentication:** Secure user registration and login using JWT.
+-   ✅ **Room Management:** Create and join private communication rooms.
+-   ✅ **WebRTC Signaling:** Real-time signaling server using SignalR to facilitate peer connections.
+-   🔄 **1-on-1 Video/Audio Calls:** Direct, low-latency P2P media streams.
+-   🔄 **In-Room Chat:** Real-time text messaging during calls.
+-   🔄 **Screen Sharing:** Share your screen with the other participant.
+-   🔄 **Email Integration:** User verification and notification emails via SMTP.
+-   💡 **AI-Powered Features:** Integration with a dedicated AI service.
+-   💡 **Virtual Whiteboard:** Collaborate with a shared drawing canvas.
 
 ## 🏛️ Architecture
 
@@ -25,18 +35,19 @@ The backend follows the principles of **Clean Architecture** to ensure a separat
 -   **`Infrastructure`:** Implements the interfaces defined in the Domain layer. This layer handles data access (using Entity Framework Core), and other external services.
 -   **`Core`:** The application's entry points. This layer contains the ASP.NET Core projects:
     -   **`VidSync.API`:** Manages RESTful endpoints for authentication, user management, and room creation.
-    -   **`VidSync.Signaling`:** Manages real-time communication via a SignalR Hub for WebRTC signaling, chat, and whiteboard synchronization.
+    -   **`VidSync.Signaling`:** Manages real-time communication via a SignalR Hub for WebRTC signaling, chat, and whiteboard synchronization. (Note: Can be merged into the API or kept separate).
 
 ## 🛠️ Tech Stack
 
--   **.NET 8**
+-   **.NET 9**
 -   **ASP.NET Core** (for Web API & SignalR)
--   **Entity Framework Core 8**
+-   **Entity Framework Core**
 -   **PostgreSQL** (as the primary database)
 -   **SignalR** (for real-time WebSocket communication)
 -   **JWT** (for authentication)
 -   **Redis** (for SignalR backplane and caching)
--   **Docker** (for containerization and local development)
+-   **Docker** & **Docker Compose** (for containerization and local development)
+-   **Cloudflare Tunnel** (for easy and secure exposing of local services)
 
 ## 🚀 Getting Started
 
@@ -44,7 +55,7 @@ Follow these instructions to get the backend services up and running on your loc
 
 ### Prerequisites
 
--   [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+-   [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) (or the version specified in `global.json`)
 -   [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 ### Installation & Running Locally
@@ -55,30 +66,58 @@ Follow these instructions to get the backend services up and running on your loc
     cd VidSync-Backend
     ```
 
-2.  **Configure Environment Variables:**
-    The application uses a `docker-compose.yml` file for local development. You may need to review the environment variables within this file, such as database credentials or JWT secrets, although the defaults should work out-of-the-box.
+2.  **Set Up Environment Variables:**
+    The project uses an `.env` file to manage secrets and environment-specific configuration.
+    -   Copy the example file:
+        ```bash
+        # On Windows (Command Prompt)
+        copy .env.example .env
+        
+        # On macOS/Linux
+        cp .env.example .env
+        ```
+    -   Open the newly created `.env` file and fill in the placeholder values. You must provide your own database password, JWT secret, etc.
 
-3.  **Launch the Services with Docker Compose:**
+3.  **Generate a Local HTTPS Certificate:**
+    The `docker-compose` setup is configured to use a local HTTPS certificate for the API service.
+    -   Run the following .NET CLI command to generate a certificate:
+        ```bash
+        dotnet dev-certs https -ep ./src/Core/VidSync.API/localhost.pfx -p YOUR_STRONG_PASSWORD_HERE
+        ```
+    -   Make sure the password you use here matches the `ASPNETCORE_HTTPS_PWD` variable in your `.env` file. The command above places the certificate in the correct location (`src/Core/VidSync.API/`) with the default name `localhost.pfx`. If you change the name, update the `docker-compose.yml` file accordingly.
+
+        ***Note:** You will also need to copy this certificate to your React frontend project, otherwise HTTPS requests will fail.*
+
+4.  **Launch the Services with Docker Compose:**
     This is the recommended way to run the entire backend stack, including the database and cache.
     ```bash
     docker-compose up --build
     ```
     This command will:
-    -   Pull or build the required Docker images.
+    -   Build the required Docker images for the API.
     -   Start the PostgreSQL database container.
     -   Start the Redis container.
-    -   Build and start the `VidSync.API` service (available at `http://localhost:8080`).
-    -   Build and start the `VidSync.Signaling` service (available at `http://localhost:8081`).
+    -   Build and start the `VidSync.API` service.
+    -   (Optional) Start the `cloudflared` service if you've provided a token.
 
-4.  **Apply Database Migrations:**
-    Once the containers are running, you need to apply the initial database schema. Open a new terminal and run:
-    ```bash
-    dotnet ef database update --project src/Core/VidSync.API
-    ```
-    *Note: This command needs to be run from the root of the repository.*
+5.  **Apply Database Migrations:**
+    Once the containers are running (especially the `db` container), you need to apply the initial database schema.
+    -   Open a **new terminal window** in the repository root.
+    -   Run the Entity Framework Core update command:
+        ```bash
+        dotnet ef database update --project src/Infrastructure/VidSync.Persistence --startup-project src/Core/VidSync.API
+        ```
+    *Note: This command connects to the PostgreSQL database running inside Docker, so the `docker-compose up` command must be active.*
 
-5.  **You are ready to go!**
-    The backend is now running. You can interact with the API using a tool like Postman or by running the [VidSync Frontend](https://github.com/EnesEfeTokta/VidSync-Frontend) application.
+6.  **You are ready to go!**
+    The backend is now running and available at:
+    -   **API (HTTP):** `http://localhost:5123`
+    -   **API (HTTPS):** `https://localhost:7123`
+
+### Accessing API Documentation
+
+The API includes Swagger/OpenAPI documentation for easy testing. Once the services are running, navigate to:
+-   [**https://localhost:7123/swagger**](https://localhost:7123/swagger)
 
 ## 🤝 Contributing
 
@@ -92,10 +131,28 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Next Steps for You:**
+I've also created the content for the `.env.example` file you should add to your repository.
 
-1.  Replace `YOUR_USERNAME` with your actual GitHub username in the links.
-2.  If you have a separate frontend repo, add the link to it.
-3.  As you add features, update the "Features" section to reflect the current state.
-4.  Consider adding a `CONTRIBUTING.md` file if you plan to accept contributions.
-5.  Create a `LICENSE` file (the MIT license is a great, permissive choice for most projects).
+**File: `.env.example`**
+```dotenv
+# --- Database Configuration ---
+# Used by the Postgres container to initialize and by the API to connect.
+DB_USER=postgres
+DB_PASSWORD=YOUR_STRONG_DATABASE_PASSWORD
+DB_NAME=vidsync_db
+
+# --- ASP.NET Core ---
+# Password for the local HTTPS certificate (.pfx file).
+# Generate the cert with: dotnet dev-certs https -ep ./src/Core/VidSync.API/localhost.pfx -p YOUR_PASSWORD
+ASPNETCORE_HTTPS_PWD=YOUR_STRONG_CERTIFICATE_PASSWORD
+
+# --- JWT Configuration ---
+# A long, random, and secret string for signing JWT tokens.
+JWT__Key=REPLACE_WITH_A_VERY_LONG_AND_SECRET_RANDOM_STRING_FOR_JWT
+JWT__Issuer=https://localhost:7123
+JWT__Audience=https://localhost:7123
+
+# --- Cloudflare Tunnel (Optional) ---
+# If you want to expose your local instance to the internet via Cloudflare Tunnel,
+# paste your tunnel token here. Otherwise, you can leave it blank or comment out the 'cloudflared' service in docker-compose.yml.
+CLOUDFLARE_TUNNEL_TOKEN=YOUR_CLOUDFLARE_TUNNEL_TOKEN_HERE
